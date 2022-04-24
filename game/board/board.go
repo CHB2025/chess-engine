@@ -9,10 +9,11 @@ import (
 
 type Board [8][8]*Piece
 
-func (b *Board) String() string {
+func (b Board) String() string {
 	result := ""
-	for _, row := range b {
-		for _, p := range row[:len(row)-2] {
+	for y, row := range b {
+		result += fmt.Sprint(8-y) + " "
+		for _, p := range row[:len(row)-1] {
 			if p != nil {
 				result += fmt.Sprintf("%s | ", p)
 			} else {
@@ -25,12 +26,50 @@ func (b *Board) String() string {
 			result += " \n"
 		}
 	}
+	result += "  a   b   c   d   e   f   g   h\n"
 	return result
 }
 
-func (b *Board) Move(move string) error {
-	// convert move to two positions, get piece at first position, check if second position is a valid move for that piece, then
-	return nil
+func (b Board) GetPiece(pos Position) *Piece {
+
+	return b[8-pos.row][pos.col-'a']
+}
+
+func (b Board) GetPosition(piece *Piece) *Position {
+	var pos *Position
+	for y, row := range b {
+		for x, piece2 := range row {
+			if piece2 == piece {
+				pos = &Position{row: 8 - y, col: 'a' + rune(x)}
+				break
+			}
+			if pos != nil {
+				break
+			}
+		}
+	}
+	return pos
+}
+
+func (b Board) Move(start, finish Position) (Board, error) {
+	piece := b.GetPiece(start)
+	if piece == nil {
+		return b, fmt.Errorf("No piece at chosen position")
+	}
+	validMoves := piece.ValidMoves(b)
+	isValid := false
+	for _, mv := range validMoves {
+		if mv == finish {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		return b, fmt.Errorf("Invalid move. Valid moves for %v are %v", start, validMoves)
+	}
+	b[8-finish.row][finish.col-'a'] = b[8-start.row][start.col-'a']
+	b[8-start.row][start.col-'a'] = nil
+	return b, nil
 }
 
 func DefaultBoard() Board {
