@@ -181,6 +181,21 @@ func (e *Engine) handleGo(options []string) {
 			options = options[1:]
 		case "infinite":
 			infinite = true
+		case "perft":
+			depth, err := strconv.Atoi(options[0])
+			if err != nil {
+				continue
+			}
+			perft := e.game.DividedPerft(depth)
+			var sum int
+			for key, val := range perft {
+				sum += val
+				fmt.Printf("%v: %v\n", key, val)
+			}
+			fmt.Printf("Nodes searched: %v\n", sum)
+
+			options = options[1:]
+			return
 		}
 
 		if err != nil {
@@ -189,7 +204,7 @@ func (e *Engine) handleGo(options []string) {
 		}
 	}
 
-	fmt.Sprintf(
+	output := fmt.Sprintf(
 		`Running search with the following parameters:
 		Search moves: %s
 		Ponder: %v
@@ -202,9 +217,10 @@ func (e *Engine) handleGo(options []string) {
 		Nodes: %v
 		Mate: %v
 		Move Time: %v
-		Infinite: %v`,
+		Infinite: %v
+		`,
 		moves, ponder, wtime, btime, winc, binc, movestogo, depth, nodes, mate, movetime, infinite)
-	// e.sendCommand(output)
+	e.sendCommand(output)
 
 	mvs := e.game.AllValidMoves()
 	ind := rand.Intn(len(mvs))

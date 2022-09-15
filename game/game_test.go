@@ -12,20 +12,32 @@ type Position struct {
 }
 
 func TestingPositions() []Position {
-	positions := make([]Position, 0, 10)
-	positions = append(positions, Position{
-		Name:  "Initial Position",
-		Fen:   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-		Depth: []int{1, 2, 3, 5},
-		Nodes: []int{20, 400, 8902, 4865609},
-	})
-	positions = append(positions, Position{
-		Name:  "Endgame",
-		Fen:   "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
-		Depth: []int{1, 2, 3, 5},
-		Nodes: []int{14, 191, 2812, 674624},
-	})
-	return positions
+	return []Position{
+		{
+			Name:  "Initial Position",
+			Fen:   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+			Depth: []int{1, 2, 3, 5},
+			Nodes: []int{20, 400, 8902, 4865609},
+		},
+		{
+			Name:  "Endgame",
+			Fen:   "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+			Depth: []int{1, 2, 3, 5},
+			Nodes: []int{14, 191, 2812, 674624},
+		},
+		{
+			Name:  "Castles",
+			Fen:   "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+			Depth: []int{1, 2, 3, 5},
+			Nodes: []int{48, 2039, 97862, 1936900690},
+		},
+		{
+			Name:  "Middle Game",
+			Fen:   "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+			Depth: []int{1, 2, 3, 5},
+			Nodes: []int{6, 264, 9467, 15833292},
+		},
+	}
 }
 
 // Get more positions to test here: https://gist.github.com/peterellisjones/8c46c28141c162d1d8a0f0badbc9cff9
@@ -92,8 +104,8 @@ func TestMovesLogged(t *testing.T) {
 	// 	}
 	// }
 
-	g, _ := FromFEN("rnbqkbnr/1ppppppp/8/p7/7P/8/PPPPPPP1/RNBQKBNR w KQkq a6 0 3")
-	perft := g.DividedPerft(1)
+	g, _ := FromFEN("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1")
+	perft := g.DividedPerft(3)
 	var sum int
 	for key, val := range perft {
 		sum += val
@@ -101,4 +113,13 @@ func TestMovesLogged(t *testing.T) {
 	}
 	t.Logf("%v Nodes searched\n", sum)
 
+}
+
+func TestRandom(t *testing.T) {
+	g, err := FromFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+	if err != nil {
+		t.Logf("Error making game: %v\n", err)
+		return
+	}
+	t.Log(g.AllValidMoves())
 }

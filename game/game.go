@@ -89,7 +89,20 @@ func (g *Game) make(mv *move.Move) {
 	castle := p%piece.White == piece.King && mv.OriginIndex()/8 == mv.DestIndex()/8 && mdistance(mv.OriginIndex(), mv.DestIndex()) > 1 // piece is king, moving 2 or 3 spaces on one rank
 	ep := p%piece.White == piece.Pawn && g.EPTarget == mv.DestIndex() && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2              //piece is pawn, moving to target square diagonally
 
-	mv.Capture, mv.Castle, mv.EnPassant, mv.EPTarget = capture, castle, ep, g.EPTarget
+	mv.Capture, mv.Castle, mv.EnPassant = capture, castle, ep
+	mv.BoardState = struct {
+		WQCastle bool
+		WKCastle bool
+		BQCastle bool
+		BKCastle bool
+		EPTarget int
+	}{
+		WQCastle: g.WQCastle,
+		WKCastle: g.WKCastle,
+		BQCastle: g.BKCastle,
+		BKCastle: g.BKCastle,
+		EPTarget: g.EPTarget,
+	}
 
 	if p%piece.White == piece.Pawn && mv.Origin[0] == mv.Dest[0] && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2 {
 		g.EPTarget = mv.DestIndex()/2 + mv.OriginIndex()/2
@@ -109,18 +122,26 @@ func (g *Game) make(mv *move.Move) {
 		g.Board[capIndex] = piece.Empty
 	}
 	if castle {
-		fmt.Printf("Castle")
 		rank := mv.Origin[1]
-		file := (mv.Dest[0]-mv.Origin[0])/2 + mv.Origin[0]
+		file := byte(int(mv.Origin[0]) + (int(mv.Dest[0])-int(mv.Origin[0]))/2)
 		rePos := string(file) + string(rank)
 		rsPos := "a" + string(rank)
-		if file == 'g' {
+		if file > mv.Origin[0] {
 			rsPos = "h" + string(rank)
 		}
 		reIndex := indexFromPosition(rePos)
 		rsIndex := indexFromPosition(rsPos)
 		g.Board[reIndex] = g.Board[rsIndex]
 		g.Board[rsIndex] = piece.Empty
+	}
+	if p%piece.White == piece.King {
+		if p.IsWhite() {
+			g.WKCastle = false
+			g.WQCastle = false
+		} else {
+			g.BKCastle = false
+			g.BQCastle = false
+		}
 	}
 	g.Moves = append(g.Moves, mv)
 }
@@ -132,7 +153,11 @@ func (g *Game) Unmake() {
 	g.Board[move.OriginIndex()] = g.Board[move.DestIndex()]
 	g.Board[move.DestIndex()] = move.Capture
 	g.WhiteToMove = !g.WhiteToMove
-	g.EPTarget = move.EPTarget
+	g.EPTarget = move.BoardState.EPTarget
+	g.WQCastle = move.BoardState.WQCastle
+	g.WKCastle = move.BoardState.WKCastle
+	g.BKCastle = move.BoardState.BKCastle
+	g.BQCastle = move.BoardState.BQCastle
 	if move.EnPassant {
 		g.Board[move.DestIndex()] = piece.Empty
 		file := move.Dest[0]
@@ -141,6 +166,17 @@ func (g *Game) Unmake() {
 		g.Board[index] = move.Capture
 	}
 	if move.Castle {
+		rank := move.Origin[1]
+		file := byte(int(move.Origin[0]) + (int(move.Dest[0])-int(move.Origin[0]))/2)
+		rePos := string(file) + string(rank)
+		rsPos := "a" + string(rank)
+		if file > move.Origin[0] {
+			rsPos = "h" + string(rank)
+		}
+		reIndex := indexFromPosition(rePos)
+		rsIndex := indexFromPosition(rsPos)
+		g.Board[rsIndex] = g.Board[reIndex]
+		g.Board[reIndex] = piece.Empty
 
 	}
 
@@ -264,13 +300,27 @@ func (g *Game) moves(pos string) []string {
 
 	switch p % 8 {
 	case piece.Pawn:
-		dir := -1 * (int(p/8)*2 - 3)
+		dir := -1 * (int(p/piece.White)*2 - 3)
 		// fmt.Printf("dir: %v\n", dir)
 		index := start + Forward*dir
+		appendPawnMove := func(dest int) {
+			mv := pos + positionFromIndex(dest)
+			if dest/8 == 7 || dest/8 == 0 {
+				promos := []string{"Q", "R", "B", "N"}
+				if !p.IsWhite() {
+					promos = []string{"q", "r", "b", "n"}
+				}
+				for _, p := range promos {
+					moves = append(moves, mv+p) // Adds promotions, but game doesn't know what to do with them
+				}
+			} else {
+				moves = append(moves, mv)
+			}
+		}
 		if index < 64 && index >= 0 && g.Board[index] == piece.Empty {
-			moves = append(moves, pos+positionFromIndex(index))
+			appendPawnMove(index)
 
-			if start/8-dir == 7 || (start)/8-dir == 0 && g.Board[start+2*Forward*dir] == piece.Empty { // in starting row
+			if (start/8-dir == 7 || start/8-dir == 0) && g.Board[index+Forward*dir] == piece.Empty { // in starting row
 				moves = append(moves, pos+positionFromIndex(index+Forward*dir))
 			}
 		}
@@ -285,14 +335,14 @@ func (g *Game) moves(pos string) []string {
 			mdistance(start, leftAttack) == 2 &&
 			g.Board[leftAttack] != piece.Empty &&
 			g.Board[leftAttack].IsWhite() != p.IsWhite() {
-			moves = append(moves, pos+positionFromIndex(leftAttack))
+			appendPawnMove(leftAttack)
 		}
 		rightAttack := start + Forward*dir + Right
 		if rightAttack < 64 && rightAttack >= 0 &&
 			mdistance(start, rightAttack) == 2 &&
 			g.Board[rightAttack] != piece.Empty &&
 			g.Board[rightAttack].IsWhite() != p.IsWhite() {
-			moves = append(moves, pos+positionFromIndex(rightAttack))
+			appendPawnMove(rightAttack)
 		}
 	case piece.Queen:
 		for _, dir := range allDirections {
@@ -347,7 +397,7 @@ func (g *Game) moves(pos string) []string {
 			Forward + Right + Right,
 			Backward + Right + Right,
 			Backward + Backward + Left,
-			Backward + Backward + Left,
+			Backward + Backward + Right,
 		}
 		for _, mv := range preMoves {
 			distance := mdistance(start, start+mv)

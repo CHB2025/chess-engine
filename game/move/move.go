@@ -10,16 +10,23 @@ import (
 
 const (
 	PositionRegex = `^[a-hA-H][0-8]$`
-	MoveRegex     = `^([a-hA-H][0-8]){2}$`
+	MoveRegex     = `^([a-hA-H][0-8]){2}[qrbnQRBN]?$`
 )
 
 type Move struct {
-	Origin    string
-	Dest      string
-	Capture   piece.Piece
-	EnPassant bool
-	EPTarget  int
-	Castle    bool
+	Origin     string
+	Dest       string
+	Capture    piece.Piece
+	Promotion  piece.Piece
+	EnPassant  bool
+	Castle     bool
+	BoardState struct {
+		WQCastle bool
+		WKCastle bool
+		BQCastle bool
+		BKCastle bool
+		EPTarget int
+	}
 }
 
 func (m *Move) String() string {
@@ -56,8 +63,14 @@ func EmptyMove(mv string) (*Move, error) {
 		return nil, fmt.Errorf("Invalid Move given. Received %v\n", mv)
 	}
 
+	var promote piece.Piece = piece.Empty
+	if len(mv) == 5 {
+		promote = piece.FromRune(rune(mv[4]))
+	}
+
 	return &Move{
-		Origin: mv[:2],
-		Dest:   mv[2:],
+		Origin:    mv[:2],
+		Dest:      mv[2:4],
+		Promotion: promote,
 	}, nil
 }
