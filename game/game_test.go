@@ -105,7 +105,7 @@ func TestMovesLogged(t *testing.T) {
 	// }
 
 	g, _ := FromFEN("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1")
-	perft := g.DividedPerft(3)
+	perft := g.DividedPerft(2)
 	var sum int
 	for key, val := range perft {
 		sum += val
@@ -122,4 +122,21 @@ func TestRandom(t *testing.T) {
 		return
 	}
 	t.Log(g.AllValidMoves())
+}
+
+func BenchmarkMoveGeneration(b *testing.B) {
+	b.StopTimer()
+	positions := TestingPositions()
+
+	for _, position := range positions {
+		g, err := FromFEN(position.Fen)
+		if err != nil {
+			b.Errorf("Failed to create game with fen '%v'\n", position.Fen)
+			continue
+		}
+
+		b.StartTimer()
+		b.Run(position.Name, func(b *testing.B) { g.Perft(3) })
+		b.StopTimer()
+	}
 }

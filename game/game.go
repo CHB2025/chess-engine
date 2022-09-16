@@ -105,7 +105,7 @@ func (g *Game) make(mv *move.Move) {
 	}
 
 	if p%piece.White == piece.Pawn && mv.Origin[0] == mv.Dest[0] && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2 {
-		g.EPTarget = mv.DestIndex()/2 + mv.OriginIndex()/2
+		g.EPTarget = mv.DestIndex()/2 + mv.OriginIndex()/2 + mv.DestIndex()%2
 	} else {
 		g.EPTarget = -1
 	}
@@ -113,6 +113,9 @@ func (g *Game) make(mv *move.Move) {
 	g.Board[mv.DestIndex()] = g.Board[mv.OriginIndex()]
 	g.Board[mv.OriginIndex()] = piece.Empty
 	g.WhiteToMove = !g.WhiteToMove
+	if mv.Promotion != piece.Empty {
+		g.Board[mv.DestIndex()] = mv.Promotion
+	}
 
 	if ep {
 		file := mv.Dest[0]
@@ -158,6 +161,9 @@ func (g *Game) Unmake() {
 	g.WKCastle = move.BoardState.WKCastle
 	g.BKCastle = move.BoardState.BKCastle
 	g.BQCastle = move.BoardState.BQCastle
+	if move.Promotion != piece.Empty {
+		g.Board[move.OriginIndex()] = piece.Pawn | (move.Promotion / piece.White * piece.White)
+	}
 	if move.EnPassant {
 		g.Board[move.DestIndex()] = piece.Empty
 		file := move.Dest[0]
@@ -232,6 +238,12 @@ func (g *Game) AllValidMoves() []string {
 			var atks []string
 			if p == piece.Piece(color|piece.King) {
 				atks = g.attackers(m.Dest)
+
+				// Checks if castling over check
+				if mdistance(m.OriginIndex(), m.DestIndex()) == 2 && m.OriginIndex()/8 == m.DestIndex()/8 {
+					position := positionFromIndex(m.OriginIndex() + (m.DestIndex()-m.OriginIndex())/2)
+					atks = append(atks, g.attackers(position)...)
+				}
 			} else {
 				atks = g.attackers(king)
 			}
@@ -268,6 +280,12 @@ func (g *Game) ValidMoves(pos string) []string {
 		var atks []string
 		if p == piece.Piece(color|piece.King) {
 			atks = g.attackers(m.Dest)
+
+			// Checks if castling over check
+			if mdistance(m.OriginIndex(), m.DestIndex()) == 2 && m.OriginIndex()/8 == m.DestIndex()/8 {
+				position := positionFromIndex(m.OriginIndex() + (m.DestIndex()-m.OriginIndex())/2)
+				atks = append(atks, g.attackers(position)...)
+			}
 		} else {
 			atks = g.attackers(king)
 		}
