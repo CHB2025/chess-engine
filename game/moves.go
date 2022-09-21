@@ -16,59 +16,93 @@ const (
 	BackLeft   = -9
 )
 
-func (g *Game) AllValidMoves() []string {
-	return g.ValidMoves("")
-}
-
-func (g *Game) ValidMoves(pos string) []string {
-	var moves []string
-	var king string
+func (g *Game) IsMoveLegal(mv string) bool {
+	m, err := move.EmptyMove(mv)
+	if err != nil {
+		return false
+	}
+	p := g.Piece(m.Origin)
+	if p.IsWhite() != g.WhiteToMove {
+		return false
+	}
 	color := piece.White
 	if !g.WhiteToMove {
 		color = piece.Black
 	}
-	search := make(map[int]piece.Piece, 16)
 
+	var king string
 	for i, p := range g.Board {
 		if p == piece.Piece(color|piece.King) {
 			king = positionFromIndex(i)
 		}
-		if p != piece.Empty && p.IsWhite() == g.WhiteToMove {
-			search[i] = p
+	}
+
+	g.make(m)
+	inCheck := false
+	if p == piece.Piece(color|piece.King) {
+		inCheck = g.isAttacked(m.Dest)
+
+		oRow, _ := coordinates(m.OriginIndex())
+		dRow, _ := coordinates(m.DestIndex())
+		// Checks if castling out of/over check
+		if !inCheck && mdistance(m.OriginIndex(), m.DestIndex()) == 2 && oRow == dRow {
+			position := positionFromIndex(m.OriginIndex() + (m.DestIndex()-m.OriginIndex())/2)
+			inCheck = g.isAttacked(position) || g.isAttacked(m.Origin)
+		}
+	} else {
+		inCheck = g.isAttacked(king)
+	}
+	g.Unmake()
+	return !inCheck
+}
+
+func (g *Game) AllLegalMoves() []string {
+	return g.LegalMoves("")
+}
+
+func (g *Game) LegalMoves(pos string) []string {
+	var moves, search []string
+	if pos != "" {
+		search = []string{pos}
+	} else {
+		search = make([]string, 64)
+		for i := 0; i < 64; i++ {
+			search[i] = positionFromIndex(i)
 		}
 	}
 
-	if pos != "" {
-		index := indexFromPosition(pos)
-		search = make(map[int]piece.Piece, 1)
-		search[index] = g.Board[index]
-	}
-
-	// Making each move to see if it will put king in check. Not very efficient, since every move
-	// has to check all opposing pieces to see if they can move to the kings square
-	for i, p := range search {
-		mvs := g.moves(positionFromIndex(i))
+	for i, ps := range search {
+		if g.Board[i] == piece.Empty || g.Board[i].IsWhite() != g.WhiteToMove {
+			continue
+		}
+		mvs := g.moves(ps)
 		for _, mv := range mvs {
-			m, _ := move.EmptyMove(mv)
-			g.make(m)
-			var atks []string
-			if p == piece.Piece(color|piece.King) {
-				atks = g.attackers(m.Dest)
-
-				// Checks if castling out of/over check
-				if len(atks) == 0 && mdistance(m.OriginIndex(), m.DestIndex()) == 2 && m.OriginIndex()/8 == m.DestIndex()/8 {
-					position := positionFromIndex(m.OriginIndex() + (m.DestIndex()-m.OriginIndex())/2)
-					atks = append(atks, g.attackers(position)...)
-					atks = append(atks, g.attackers(m.Origin)...)
-				}
-			} else {
-				atks = g.attackers(king)
-			}
-			if len(atks) == 0 {
+			if g.IsMoveLegal(mv) {
 				moves = append(moves, mv)
 			}
-			g.Unmake()
 		}
+	}
+	return moves
+}
+
+func (g *Game) PseudoLegalMoves(pos string) []string {
+	var moves []string
+	search := make(map[int]string, 64)
+	if pos != "" {
+		search[indexFromPosition(pos)] = pos
+	} else {
+		for i := 0; i < 64; i++ {
+			if g.Board[i] != piece.Empty && g.Board[i].IsWhite() == g.WhiteToMove {
+				search[i] = positionFromIndex(i)
+			}
+		}
+	}
+
+	for i, ps := range search {
+		if g.Board[i] == piece.Empty || g.Board[i].IsWhite() != g.WhiteToMove {
+			continue
+		}
+		moves = append(moves, g.moves(ps)...)
 	}
 	return moves
 }
@@ -76,145 +110,184 @@ func (g *Game) ValidMoves(pos string) []string {
 func (g *Game) moves(pos string) []string {
 	p := g.Piece(pos)
 	start := indexFromPosition(pos)
-	var moves []string
 
+	switch p.Type() {
+	case piece.Pawn:
+		return g.pawnMoves(start, p.Color())
+	case piece.Queen:
+		return g.queenMoves(start, p.Color())
+	case piece.Bishop:
+		return g.bishopMoves(start, p.Color())
+	case piece.Rook:
+		return g.rookMoves(start, p.Color())
+	case piece.King:
+		return g.kingMoves(start, p.Color())
+	case piece.Knight:
+		return g.knightMoves(start, p.Color())
+	default:
+		return []string{}
+	}
+}
+
+func (g *Game) pawnMoves(start int, color piece.Piece) []string {
+	dir := -1 * (int(color/piece.White)*2 - 3)
+	index := start + Forward*dir
+	moves := []string{}
+
+	appendMoves := func(dest int) {
+		mv := positionFromIndex(start) + positionFromIndex(dest)
+		row, _ := coordinates(dest)
+		//Handles promotions
+		if row == 7 || row == 0 {
+			promos := []string{"Q", "R", "B", "N"}
+			if color != piece.White {
+				promos = []string{"q", "r", "b", "n"}
+			}
+			for _, p := range promos {
+				moves = append(moves, mv+p)
+			}
+		} else {
+			moves = append(moves, mv)
+		}
+	}
+
+	if index < 64 && index >= 0 && g.Board[index] == piece.Empty {
+		appendMoves(index)
+
+		row, _ := coordinates(start)
+
+		// in starting row and the two spots in front are open
+		if (row-dir == 7 || row-dir == 0) && g.Board[index+Forward*dir] == piece.Empty {
+			appendMoves(index + Forward*dir)
+		}
+	}
+	// En Passant
+	if g.EPTarget != -1 && index+Left == g.EPTarget && mdistance(index, index+Left) == 1 {
+		appendMoves(index + Left)
+	}
+	if g.EPTarget != -1 && index+Right == g.EPTarget && mdistance(index, index+Right) == 1 {
+		appendMoves(index + Right)
+	}
+	//Attacking squares
+	leftAttack := start + Forward*dir + Left
+	if leftAttack < 64 && leftAttack >= 0 &&
+		mdistance(start, leftAttack) == 2 &&
+		g.Board[leftAttack] != piece.Empty &&
+		g.Board[leftAttack].Color() != color {
+		appendMoves(leftAttack)
+	}
+	rightAttack := start + Forward*dir + Right
+	if rightAttack < 64 && rightAttack >= 0 &&
+		mdistance(start, rightAttack) == 2 &&
+		g.Board[rightAttack] != piece.Empty &&
+		g.Board[rightAttack].Color() != color {
+		appendMoves(rightAttack)
+	}
+	return moves
+}
+
+func (g *Game) kingMoves(start int, color piece.Piece) []string {
 	allDirections := []int{
 		FrontLeft, Forward, FrontRight,
 		Left, Right,
 		BackLeft, Backward, BackRight,
 	}
+
+	moves := []string{}
+
+	for _, dir := range allDirections {
+		if start+dir >= 0 && start+dir < 64 && mdistance(start, start+dir) <= 2 && g.Board[start+dir].Color() != color {
+			targetPosition := positionFromIndex(start + dir)
+			moves = append(moves, positionFromIndex(start)+targetPosition)
+		}
+	}
+	// Castling
+	if color.IsWhite() && g.WKCastle || !color.IsWhite() && g.BKCastle {
+		kingSideClear := true
+		for i := 1; i <= 2; i++ {
+			if g.Board[start+i*Right] != piece.Empty {
+				kingSideClear = false
+				break
+			}
+		}
+		if kingSideClear && g.Board[start+3*Right] == piece.Piece(color|piece.Rook) {
+			moves = append(moves, positionFromIndex(start)+positionFromIndex(start+Right*2))
+		}
+	}
+	if color.IsWhite() && g.WQCastle || !color.IsWhite() && g.BQCastle {
+		queenSideClear := true
+		for i := 1; i <= 3; i++ {
+			if g.Board[start+i*Left] != piece.Empty {
+				queenSideClear = false
+				break
+			}
+		}
+		if queenSideClear && g.Board[start+4*Left] == piece.Piece(color|piece.Rook) {
+			moves = append(moves, positionFromIndex(start)+positionFromIndex(start+Left*2))
+		}
+	}
+
+	return moves
+}
+
+func (g *Game) bishopMoves(start int, color piece.Piece) []string {
 	diagonals := []int{
 		FrontLeft, FrontRight,
 		BackLeft, BackRight,
 	}
+
+	moves := []string{}
+	for _, dir := range diagonals {
+		moves = append(moves, g.slidingMoves(start, dir, color)...)
+	}
+	return moves
+}
+
+func (g *Game) rookMoves(start int, color piece.Piece) []string {
 	orthogonals := []int{
 		Forward, Backward,
 		Right, Left,
 	}
 
-	switch p % 8 {
-	case piece.Pawn:
-		dir := -1 * (int(p/piece.White)*2 - 3)
-		index := start + Forward*dir
+	moves := []string{}
+	for _, dir := range orthogonals {
+		moves = append(moves, g.slidingMoves(start, dir, color)...)
+	}
+	return moves
+}
 
-		appendPawnMove := func(dest int) {
-			mv := pos + positionFromIndex(dest)
+func (g *Game) queenMoves(start int, color piece.Piece) []string {
+	return append(g.rookMoves(start, color), g.bishopMoves(start, color)...)
+}
 
-			//Handles promotions
-			if dest/8 == 7 || dest/8 == 0 {
-				promos := []string{"Q", "R", "B", "N"}
-				if !p.IsWhite() {
-					promos = []string{"q", "r", "b", "n"}
-				}
-				for _, p := range promos {
-					moves = append(moves, mv+p)
-				}
-			} else {
-				moves = append(moves, mv)
-			}
-		}
+func (g *Game) knightMoves(start int, color piece.Piece) []string {
+	preMoves := []int{
+		Forward + Forward + Right,
+		Forward + Forward + Left,
+		Forward + Left + Left,
+		Backward + Left + Left,
+		Forward + Right + Right,
+		Backward + Right + Right,
+		Backward + Backward + Left,
+		Backward + Backward + Right,
+	}
 
-		if index < 64 && index >= 0 && g.Board[index] == piece.Empty {
-			appendPawnMove(index)
-
-			// in starting row and the two spots in front are open
-			if (start/8-dir == 7 || start/8-dir == 0) && g.Board[index+Forward*dir] == piece.Empty {
-				moves = append(moves, pos+positionFromIndex(index+Forward*dir))
-			}
-		}
-		// En Passant
-		if g.EPTarget != -1 && index+Left == g.EPTarget && mdistance(index, index+Left) == 1 {
-			moves = append(moves, pos+positionFromIndex(index+Left))
-		}
-		if g.EPTarget != -1 && index+Right == g.EPTarget && mdistance(index, index+Right) == 1 {
-			moves = append(moves, pos+positionFromIndex(index+Right))
-		}
-		//Attacking squares
-		leftAttack := start + Forward*dir + Left
-		if leftAttack < 64 && leftAttack >= 0 &&
-			mdistance(start, leftAttack) == 2 &&
-			g.Board[leftAttack] != piece.Empty &&
-			g.Board[leftAttack].IsWhite() != p.IsWhite() {
-			appendPawnMove(leftAttack)
-		}
-		rightAttack := start + Forward*dir + Right
-		if rightAttack < 64 && rightAttack >= 0 &&
-			mdistance(start, rightAttack) == 2 &&
-			g.Board[rightAttack] != piece.Empty &&
-			g.Board[rightAttack].IsWhite() != p.IsWhite() {
-			appendPawnMove(rightAttack)
-		}
-	case piece.Queen:
-		for _, dir := range allDirections {
-			moves = append(moves, g.slidingMoves(p, start, dir)...)
-		}
-	case piece.Bishop:
-		for _, dir := range diagonals {
-			moves = append(moves, g.slidingMoves(p, start, dir)...)
-		}
-	case piece.Rook:
-		for _, dir := range orthogonals {
-			moves = append(moves, g.slidingMoves(p, start, dir)...)
-		}
-	case piece.King:
-		for _, dir := range allDirections {
-			if start+dir >= 0 && start+dir < 64 && mdistance(start, start+dir) <= 2 && g.Board[start+dir]/8 != p/8 {
-				targetPosition := positionFromIndex(start + dir)
-				moves = append(moves, pos+targetPosition)
-			}
-		}
-		color := p / piece.White * piece.White
-		if p.IsWhite() && g.WKCastle || !p.IsWhite() && g.BKCastle {
-			kingSideClear := true
-			for i := 1; i <= 2; i++ {
-				if g.Board[start+i*Right] != piece.Empty {
-					kingSideClear = false
-					break
-				}
-			}
-			if kingSideClear && g.Board[start+3*Right] == piece.Piece(color|piece.Rook) {
-				moves = append(moves, pos+positionFromIndex(start+Right*2))
-			}
-		}
-		if p.IsWhite() && g.WQCastle || !p.IsWhite() && g.BQCastle {
-			queenSideClear := true
-			for i := 1; i <= 3; i++ {
-				if g.Board[start+i*Left] != piece.Empty {
-					queenSideClear = false
-					break
-				}
-			}
-			if queenSideClear && g.Board[start+4*Left] == piece.Piece(color|piece.Rook) {
-				moves = append(moves, pos+positionFromIndex(start+Left*2))
-			}
-		}
-	case piece.Knight:
-		preMoves := []int{
-			Forward + Forward + Right,
-			Forward + Forward + Left,
-			Forward + Left + Left,
-			Backward + Left + Left,
-			Forward + Right + Right,
-			Backward + Right + Right,
-			Backward + Backward + Left,
-			Backward + Backward + Right,
-		}
-		for _, mv := range preMoves {
-			distance := mdistance(start, start+mv)
-			if start+mv >= 0 && start+mv < 64 && distance == 3 && g.Board[start+mv]/8 != p/8 {
-				moves = append(moves, pos+positionFromIndex(start+mv))
-			}
+	moves := []string{}
+	for _, mv := range preMoves {
+		distance := mdistance(start, start+mv)
+		if start+mv >= 0 && start+mv < 64 && distance == 3 && g.Board[start+mv].Color() != color {
+			moves = append(moves, positionFromIndex(start)+positionFromIndex(start+mv))
 		}
 	}
 	return moves
 }
 
-func (g *Game) slidingMoves(p piece.Piece, start, dir int) []string {
+func (g *Game) slidingMoves(start, dir int, color piece.Piece) []string {
 	var moves []string
 	curr := start
 	inBoard := curr+dir >= 0 && curr+dir < 64
 	crossesBoundary := mdistance(curr, curr+dir) > 2
-	for inBoard && !crossesBoundary && (g.Board[curr+dir] == piece.Empty || g.Board[curr+dir].IsWhite() != p.IsWhite()) {
+	for inBoard && !crossesBoundary && (g.Board[curr+dir] == piece.Empty || g.Board[curr+dir].IsWhite() != color.IsWhite()) {
 		moves = append(moves, positionFromIndex(start)+positionFromIndex(curr+dir))
 		if g.Board[curr+dir] != piece.Empty {
 			break

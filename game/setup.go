@@ -47,6 +47,8 @@ func FromFEN(fen string) (*Game, error) {
 		BQCastle:    strings.Contains(sections[2], "q"),
 		EPTarget:    indexFromPosition(sections[3]),
 	}
+	game.InitializeHash()
+	game.Hash = Hash(game)
 	return game, nil
 }
 

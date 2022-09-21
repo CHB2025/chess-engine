@@ -1,7 +1,10 @@
-package game
+package game_test
 
 import (
+	"fmt"
 	"testing"
+
+	"bareman.net/chess-engine/game"
 )
 
 type Position struct {
@@ -24,7 +27,7 @@ func TestingPositions() []Position {
 			Name:  "Kiwipete",
 			Fen:   "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
 			Depth: []int{1, 2, 3, 5},
-			Nodes: []int{48, 2039, 97862, 1_936_900_690},
+			Nodes: []int{48, 2039, 97_862, 1_936_900_690},
 		},
 		{
 			Name:  "Endgame",
@@ -62,7 +65,7 @@ func TestFEN(t *testing.T) {
 		"r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b KQkq - 3 2",
 	}
 	for _, fen := range fenStrings {
-		g, err := FromFEN(fen)
+		g, err := game.FromFEN(fen)
 		if err != nil {
 			t.Errorf("Failed to create game from FEN string: %s\n", err)
 			continue
@@ -79,13 +82,13 @@ func TestMoves(t *testing.T) {
 
 	for _, position := range positions {
 		t.Logf("Testing %v\n", position.Name)
-		g, err := FromFEN(position.Fen)
+		g, err := game.FromFEN(position.Fen)
 		if err != nil {
 			t.Errorf("Failed to create game with fen '%v'\n", position.Fen)
 			continue
 		}
 		for i, depth := range position.Depth {
-			if position.Nodes[i] > 100_000 {
+			if position.Nodes[i] > 90_000 {
 				t.Logf("Skipping depth %v. Too slow\n", depth)
 				break
 			}
@@ -99,12 +102,39 @@ func TestMoves(t *testing.T) {
 	}
 }
 
+func TestIncrementalHash(t *testing.T) {
+	positions := TestingPositions()
+
+	for _, position := range positions {
+		g, err := game.FromFEN(position.Fen)
+		if err != nil {
+			t.Errorf("Failed to create game with fen '%v'\n", position.Fen)
+			continue
+		}
+		if g.Hash != game.Hash(g) {
+			t.Errorf("Initial Hashes do not match\n")
+		}
+		mvs := g.AllLegalMoves()
+		for _, m := range mvs {
+			g.Make(m)
+			if g.Hash != game.Hash(g) {
+				t.Errorf("Hashes do not match after making move\n")
+			}
+			g.Unmake()
+			if g.Hash != game.Hash(g) {
+				t.Errorf("Hashes do not match after Unmaking move\n")
+			}
+		}
+
+	}
+}
+
 func BenchmarkMoveGeneration(b *testing.B) {
 	b.StopTimer()
 	positions := TestingPositions()
 
 	for _, position := range positions {
-		g, err := FromFEN(position.Fen)
+		g, err := game.FromFEN(position.Fen)
 		if err != nil {
 			b.Errorf("Failed to create game with fen '%v'\n", position.Fen)
 			continue
@@ -112,6 +142,69 @@ func BenchmarkMoveGeneration(b *testing.B) {
 
 		b.StartTimer()
 		b.Run(position.Name, func(b *testing.B) { g.Perft(3) })
+		b.StopTimer()
+	}
+}
+
+func BenchmarkInitialPosition(b *testing.B) {
+	b.StopTimer()
+	b.ResetTimer()
+	g := game.Default()
+	b.StartTimer()
+	for i := 1; i < 6; i++ {
+		b.Run(fmt.Sprintf("Depth_%v", i), func(b *testing.B) { g.Perft(i) })
+	}
+}
+
+func BenchmarkLegalMoves(b *testing.B) {
+	b.StopTimer()
+	b.ResetTimer()
+	positions := TestingPositions()
+	for _, p := range positions {
+		g, err := game.FromFEN(p.Fen)
+		if err != nil {
+			b.Errorf("Failed to build game from Fen %v\n", p.Fen)
+			continue
+		}
+		b.StartTimer()
+		b.Run(p.Name, func(b *testing.B) { g.AllLegalMoves() })
+		b.StopTimer()
+	}
+}
+
+func BenchmarkPseudolegalMoves(b *testing.B) {
+	b.StopTimer()
+	b.ResetTimer()
+	positions := TestingPositions()
+	for _, p := range positions {
+		g, err := game.FromFEN(p.Fen)
+		if err != nil {
+			b.Errorf("Failed to build game from Fen %v\n", p.Fen)
+			continue
+		}
+		b.StartTimer()
+		b.Run(p.Name, func(b *testing.B) { g.PseudoLegalMoves("") })
+		b.StopTimer()
+	}
+}
+
+func BenchmarkMake(b *testing.B) {
+	b.StopTimer()
+	b.ResetTimer()
+	positions := TestingPositions()
+	for _, p := range positions {
+		g, err := game.FromFEN(p.Fen)
+		if err != nil {
+			b.Errorf("Failed to build game from Fen %v\n", p.Fen)
+			continue
+		}
+		moves := g.AllLegalMoves()
+		b.StartTimer()
+		b.Run(p.Name, func(b *testing.B) {
+			for _, mv := range moves {
+				g.Make(mv)
+			}
+		})
 		b.StopTimer()
 	}
 }

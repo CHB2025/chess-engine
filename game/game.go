@@ -2,12 +2,14 @@ package game
 
 import (
 	"fmt"
+	"sync"
 
 	"bareman.net/chess-engine/game/move"
 	"bareman.net/chess-engine/game/piece"
 )
 
 type Game struct {
+	Mu          sync.Mutex
 	Board       [64]piece.Piece
 	Moves       []*move.Move
 	MoveCount   int
@@ -18,6 +20,8 @@ type Game struct {
 	BQCastle    bool
 	BKCastle    bool
 	EPTarget    int
+	hashKeys    [781]uint64
+	Hash        uint64
 }
 
 func (g *Game) String() string {
@@ -61,19 +65,75 @@ func (g *Game) attackers(position string) []string {
 			p = piece.White
 		}
 	}
-	var moves []string
-	for index, pi := range g.Board {
-		if pi != piece.Empty && pi/piece.White != p/piece.White {
-			moves = append(moves, g.moves(positionFromIndex(index))...)
-		}
-	}
 	var attackers []string
-	for _, mv := range moves {
-		if mv[2:4] == position {
-			attackers = append(attackers, mv[:2])
+	for index, pi := range g.Board {
+		if pi != piece.Empty && pi.Color() != p.Color() {
+			moves := g.moves(positionFromIndex(index))
+			for _, mv := range moves {
+				if mv[2:4] == position {
+					attackers = append(attackers, mv[:2])
+				}
+			}
 		}
 	}
 	return attackers
+}
+
+// Probably bugged with EnPassant
+func (g *Game) isAttacked(position string) bool {
+
+	p := g.Piece(position)
+	if p == piece.Empty {
+		if g.WhiteToMove {
+			p = piece.Black
+		} else {
+			p = piece.White
+		}
+	}
+
+	start := indexFromPosition(position)
+
+	// Check pawns
+	pMoves := g.pawnMoves(start, p.Color())
+	for _, m := range pMoves {
+		if g.Piece(m[2:4]).Type() == piece.Pawn {
+			return true
+		}
+	}
+
+	// Check king
+	kMoves := g.kingMoves(start, p.Color())
+	for _, m := range kMoves {
+		if g.Piece(m[2:4]).Type() == piece.King {
+			return true
+		}
+	}
+
+	// Check bishop/half queen
+	bMoves := g.bishopMoves(start, p.Color())
+	for _, m := range bMoves {
+		if g.Piece(m[2:4]).Type() == piece.Bishop || g.Piece(m[2:4]).Type() == piece.Queen {
+			return true
+		}
+	}
+
+	// Check rook/other half queen
+	rMoves := g.rookMoves(start, p.Color())
+	for _, m := range rMoves {
+		if g.Piece(m[2:4]).Type() == piece.Rook || g.Piece(m[2:4]).Type() == piece.Queen {
+			return true
+		}
+	}
+
+	// Check knight
+	nMoves := g.knightMoves(start, p.Color())
+	for _, m := range nMoves {
+		if g.Piece(m[2:4]).Type() == piece.Knight {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (g *Game) ToFEN() string {
@@ -130,15 +190,29 @@ func (g *Game) ToFEN() string {
 }
 
 func (g *Game) Perft(depth int) int {
+	transpositions := make(map[uint64]int)
+	return g.perft(depth, transpositions)
+}
+
+func (g *Game) perft(depth int, transpositions map[uint64]int) int {
 	if depth == 0 {
 		return 1
 	}
-	moves := g.AllValidMoves()
+
+	moves := g.PseudoLegalMoves("")
 	var moveCount int
 	for _, mv := range moves {
-		m, _ := move.EmptyMove(mv)
-		g.make(m)
-		moveCount += g.Perft(depth - 1)
+		err := g.Make(mv)
+		if err != nil {
+			continue
+		}
+
+		mvs, ok := transpositions[g.Hash]
+		if !ok {
+			mvs = g.perft(depth-1, transpositions)
+			transpositions[g.Hash] = mvs
+		}
+		moveCount += mvs
 		g.Unmake()
 	}
 	return moveCount
@@ -148,12 +222,15 @@ func (g *Game) DividedPerft(depth int) map[string]int {
 	if depth == 0 {
 		return make(map[string]int)
 	}
-	moves := g.AllValidMoves()
+	transpositions := make(map[uint64]int)
+	moves := g.PseudoLegalMoves("")
 	results := make(map[string]int)
 	for _, mv := range moves {
-		m, _ := move.EmptyMove(mv)
-		g.make(m)
-		results[mv] = g.Perft(depth - 1)
+		err := g.Make(mv)
+		if err != nil {
+			continue
+		}
+		results[mv] = g.perft(depth-1, transpositions)
 		g.Unmake()
 	}
 	return results

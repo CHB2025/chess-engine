@@ -222,13 +222,13 @@ func (e *Engine) handleGo(options []string) {
 		moves, ponder, wtime, btime, winc, binc, movestogo, depth, nodes, mate, movetime, infinite)
 	e.sendCommand(output)
 
-	mvs := e.game.AllValidMoves()
+	mvs := e.game.AllLegalMoves()
 	ind := rand.Intn(len(mvs))
 	e.sendCommand(fmt.Sprintf("bestmove %v\n", mvs[ind]))
 }
 
 func (e *Engine) handleStop() {
-	moves := e.game.AllValidMoves()
+	moves := e.game.AllLegalMoves()
 	ind := rand.Intn(len(moves))
 	e.sendCommand(fmt.Sprintf("bestmove %v\n", moves[ind]))
 }

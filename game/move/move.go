@@ -35,14 +35,14 @@ func (m *Move) String() string {
 
 func (m *Move) OriginIndex() int {
 	row, _ := strconv.Atoi(string(m.Origin[1]))
-	col := rune(m.Origin[0])
-	return (row-1)*8 + int(col-'a')
+	col := int(m.Origin[0] - 'a')
+	return (row-1)<<3 + col
 }
 
 func (m *Move) DestIndex() int {
 	row, _ := strconv.Atoi(string(m.Dest[1]))
-	col := rune(m.Dest[0])
-	return (row-1)*8 + int(col-'a')
+	col := int(m.Dest[0] - 'a')
+	return (row-1)<<3 + col
 }
 
 func FullMove(mv string, Capture piece.Piece, EnPassant, Castle bool) (*Move, error) {

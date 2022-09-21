@@ -11,8 +11,10 @@ const (
 	Rook   = 5
 	Queen  = 6
 
-	White = 8
-	Black = 16
+	White     = 8
+	Black     = 16
+	TypeMask  = 0b00111
+	ColorMask = 0b11000
 )
 
 type Piece uint8
@@ -42,7 +44,13 @@ func (p Piece) String() string {
 }
 
 func (p Piece) IsWhite() bool {
-	return p/White == 1
+	return p>>3 == 1
+}
+func (p Piece) Color() Piece {
+	return p & ColorMask
+}
+func (p Piece) Type() Piece {
+	return p & TypeMask
 }
 
 func FromRune(r rune) Piece {

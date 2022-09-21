@@ -13,29 +13,22 @@ func (g *Game) Make(mv string) error {
 		return err
 	}
 
-	validMoves := g.ValidMoves(move.Origin)
-	isValid := false
-	for _, m := range validMoves {
-		if m == mv {
-			isValid = true
-			break
-		}
-	}
+	isValid := g.IsMoveLegal(mv)
 	if !isValid {
 		return fmt.Errorf("Invalid move given. Received %v\n", mv)
 	}
-	fmt.Printf("Making move %v\n", move)
 	g.make(move)
 
 	return nil
 }
 
 func (g *Game) make(mv *move.Move) {
-	//fmt.Printf("Moving from %v (%v) to %v (%v)\n", mv.Origin, mv.OriginIndex(), mv.Dest, mv.DestIndex())
+	oRow, oCol := coordinates(mv.OriginIndex())
+	dRow, dCol := coordinates(mv.DestIndex())
 	p := g.Piece(mv.Origin)
 	capture := g.Piece(mv.Dest)
-	castle := p%piece.White == piece.King && mv.OriginIndex()/8 == mv.DestIndex()/8 && mdistance(mv.OriginIndex(), mv.DestIndex()) > 1 // piece is king, moving 2 or 3 spaces on one rank
-	ep := p%piece.White == piece.Pawn && g.EPTarget == mv.DestIndex() && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2              //piece is pawn, moving to target square diagonally
+	castle := p.Type() == piece.King && oRow == dRow && mdistance(mv.OriginIndex(), mv.DestIndex()) > 1              // piece is king, moving 2 or 3 spaces on one rank
+	ep := p.Type() == piece.Pawn && g.EPTarget == mv.DestIndex() && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2 //piece is pawn, moving to target square diagonally
 
 	mv.Capture, mv.Castle, mv.EnPassant = capture, castle, ep
 	mv.BoardState = struct {
@@ -52,7 +45,7 @@ func (g *Game) make(mv *move.Move) {
 		EPTarget: g.EPTarget,
 	}
 
-	if p%piece.White == piece.Pawn && mv.Origin[0] == mv.Dest[0] && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2 {
+	if p.Type() == piece.Pawn && oCol == dCol && mdistance(mv.OriginIndex(), mv.DestIndex()) == 2 {
 		g.EPTarget = mv.DestIndex()/2 + mv.OriginIndex()/2 + mv.DestIndex()%2
 	} else {
 		g.EPTarget = -1
@@ -85,7 +78,8 @@ func (g *Game) make(mv *move.Move) {
 		g.Board[reIndex] = g.Board[rsIndex]
 		g.Board[rsIndex] = piece.Empty
 	}
-	if p%piece.White == piece.King {
+	if p.Type() == piece.King {
+		// Doesn't handle rooks moving
 		if p.IsWhite() {
 			g.WKCastle = false
 			g.WQCastle = false
@@ -95,11 +89,20 @@ func (g *Game) make(mv *move.Move) {
 		}
 	}
 	g.Moves = append(g.Moves, mv)
+	g.MoveCount += 1
+	g.incrementHash(mv, p)
 }
 
 func (g *Game) Unmake() {
+
 	move := g.Moves[len(g.Moves)-1]
+	if move.Promotion == piece.Empty {
+		g.incrementHash(move, g.Board[move.DestIndex()])
+	} else {
+		g.incrementHash(move, piece.Pawn|move.Promotion.Color())
+	}
 	g.Moves = g.Moves[:len(g.Moves)-1]
+	g.MoveCount -= 1
 
 	g.Board[move.OriginIndex()] = g.Board[move.DestIndex()]
 	g.Board[move.DestIndex()] = move.Capture
@@ -110,7 +113,7 @@ func (g *Game) Unmake() {
 	g.BKCastle = move.BoardState.BKCastle
 	g.BQCastle = move.BoardState.BQCastle
 	if move.Promotion != piece.Empty {
-		g.Board[move.OriginIndex()] = piece.Pawn | (move.Promotion / piece.White * piece.White)
+		g.Board[move.OriginIndex()] = piece.Pawn | move.Promotion.Color()
 	}
 	if move.EnPassant {
 		g.Board[move.DestIndex()] = piece.Empty
@@ -131,7 +134,6 @@ func (g *Game) Unmake() {
 		rsIndex := indexFromPosition(rsPos)
 		g.Board[rsIndex] = g.Board[reIndex]
 		g.Board[reIndex] = piece.Empty
-
 	}
 
 }
