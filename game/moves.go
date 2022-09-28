@@ -40,17 +40,17 @@ func (g *Game) IsMoveLegal(mv string) bool {
 	g.make(m)
 	inCheck := false
 	if p == piece.Piece(color|piece.King) {
-		inCheck = g.isAttacked(m.Dest)
+		inCheck = g.IsAttacked(m.Dest)
 
 		oRow, _ := coordinates(m.OriginIndex())
 		dRow, _ := coordinates(m.DestIndex())
 		// Checks if castling out of/over check
 		if !inCheck && mdistance(m.OriginIndex(), m.DestIndex()) == 2 && oRow == dRow {
 			position := positionFromIndex(m.OriginIndex() + (m.DestIndex()-m.OriginIndex())/2)
-			inCheck = g.isAttacked(position) || g.isAttacked(m.Origin)
+			inCheck = g.IsAttacked(position) || g.IsAttacked(m.Origin)
 		}
 	} else {
-		inCheck = g.isAttacked(king)
+		inCheck = g.IsAttacked(king)
 	}
 	g.Unmake()
 	return !inCheck
@@ -201,8 +201,9 @@ func (g *Game) kingMoves(start int, color piece.Piece) []string {
 			moves = append(moves, positionFromIndex(start)+targetPosition)
 		}
 	}
+	row, col := coordinates(start)
 	// Castling
-	if color.IsWhite() && g.WKCastle || !color.IsWhite() && g.BKCastle {
+	if col == 4 && (color.IsWhite() && g.WKCastle && row == 0 || !color.IsWhite() && g.BKCastle && row == 7) {
 		kingSideClear := true
 		for i := 1; i <= 2; i++ {
 			if g.Board[start+i*Right] != piece.Empty {
@@ -214,7 +215,7 @@ func (g *Game) kingMoves(start int, color piece.Piece) []string {
 			moves = append(moves, positionFromIndex(start)+positionFromIndex(start+Right*2))
 		}
 	}
-	if color.IsWhite() && g.WQCastle || !color.IsWhite() && g.BQCastle {
+	if col == 4 && (color.IsWhite() && g.WQCastle && row == 0 || !color.IsWhite() && g.BQCastle && row == 7) {
 		queenSideClear := true
 		for i := 1; i <= 3; i++ {
 			if g.Board[start+i*Left] != piece.Empty {

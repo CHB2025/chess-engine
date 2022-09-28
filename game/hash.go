@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"math/rand"
 
 	"bareman.net/chess-engine/game/move"
@@ -21,7 +20,7 @@ func (g *Game) InitializeHash() {
 	var seed int64 = rand.Int63()
 	source := rand.NewSource(seed)
 	r := rand.New(source)
-	fmt.Printf("Hashing using seed %v\n", seed)
+	// fmt.Printf("Hashing using seed %v\n", seed)
 	for i := 0; i < 781; i++ {
 		g.hashKeys[i] = r.Uint64()
 	}

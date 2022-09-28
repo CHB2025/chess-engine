@@ -43,6 +43,23 @@ func (p Piece) String() string {
 	return string(sym)
 }
 
+func (p Piece) Score() int {
+	switch p.Type() {
+	case Pawn:
+		return 1
+	case Knight:
+		return 3
+	case Bishop:
+		return 3
+	case Rook:
+		return 5
+	case Queen:
+		return 9
+	default:
+		return 0
+	}
+}
+
 func (p Piece) IsWhite() bool {
 	return p>>3 == 1
 }

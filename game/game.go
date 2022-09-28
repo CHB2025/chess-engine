@@ -56,7 +56,21 @@ func (g *Game) Piece(position string) piece.Piece {
 	return g.Board[index]
 }
 
-func (g *Game) attackers(position string) []string {
+func (g *Game) Score() int {
+	score := 0
+	for _, p := range g.Board {
+		if p.IsWhite() == g.WhiteToMove {
+			score += p.Score()
+		} else {
+			score -= p.Score()
+		}
+	}
+	return 0
+}
+
+// Will ignore En-Passant
+func (g *Game) Attackers(position string) []string {
+
 	p := g.Piece(position)
 	if p == piece.Empty {
 		if g.WhiteToMove {
@@ -65,22 +79,56 @@ func (g *Game) attackers(position string) []string {
 			p = piece.White
 		}
 	}
-	var attackers []string
-	for index, pi := range g.Board {
-		if pi != piece.Empty && pi.Color() != p.Color() {
-			moves := g.moves(positionFromIndex(index))
-			for _, mv := range moves {
-				if mv[2:4] == position {
-					attackers = append(attackers, mv[:2])
-				}
-			}
+
+	atks := []string{}
+
+	start := indexFromPosition(position)
+
+	// Check pawns
+	pMoves := g.pawnMoves(start, p.Color())
+	for _, m := range pMoves {
+		if g.Piece(m[2:4]).Type() == piece.Pawn {
+			atks = append(atks, m[2:4])
 		}
 	}
-	return attackers
+
+	// Check king
+	kMoves := g.kingMoves(start, p.Color())
+	for _, m := range kMoves {
+		if g.Piece(m[2:4]).Type() == piece.King {
+			atks = append(atks, m[2:4])
+		}
+	}
+
+	// Check bishop/half queen
+	bMoves := g.bishopMoves(start, p.Color())
+	for _, m := range bMoves {
+		if g.Piece(m[2:4]).Type() == piece.Bishop || g.Piece(m[2:4]).Type() == piece.Queen {
+			atks = append(atks, m[2:4])
+		}
+	}
+
+	// Check rook/other half queen
+	rMoves := g.rookMoves(start, p.Color())
+	for _, m := range rMoves {
+		if g.Piece(m[2:4]).Type() == piece.Rook || g.Piece(m[2:4]).Type() == piece.Queen {
+			atks = append(atks, m[2:4])
+		}
+	}
+
+	// Check knight
+	nMoves := g.knightMoves(start, p.Color())
+	for _, m := range nMoves {
+		if g.Piece(m[2:4]).Type() == piece.Knight {
+			atks = append(atks, m[2:4])
+		}
+	}
+
+	return atks
 }
 
-// Probably bugged with EnPassant
-func (g *Game) isAttacked(position string) bool {
+// Will Ignore EnPassant
+func (g *Game) IsAttacked(position string) bool {
 
 	p := g.Piece(position)
 	if p == piece.Empty {
@@ -199,13 +247,11 @@ func (g *Game) perft(depth int, transpositions map[uint64]int) int {
 		return 1
 	}
 
-	moves := g.PseudoLegalMoves("")
+	moves := g.AllLegalMoves()
 	var moveCount int
 	for _, mv := range moves {
-		err := g.Make(mv)
-		if err != nil {
-			continue
-		}
+		m, _ := move.EmptyMove(mv)
+		g.make(m)
 
 		mvs, ok := transpositions[g.Hash]
 		if !ok {
